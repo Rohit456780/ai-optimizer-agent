@@ -20,3 +20,11 @@ Auto-generate Pyomo/OR-Tools formulations.
 Phase 2 Goals
 
 Develop heuristic and metaheuristic solvers (Genetic, Tabu, etc.).
+
+## 🧠 Day 2 Summary
+- Verified OR-Tools (GLOP) and Pyomo (GLPK) solvers
+- Built and solved a sample LP problem
+- Tested environment setup in VS Code
+- Ready to move to Day 3: dynamic model building from CSV inputgit add README.md
+
+
