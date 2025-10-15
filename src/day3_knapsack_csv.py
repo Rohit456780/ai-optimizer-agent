@@ -1,8 +1,6 @@
 """
-Day 3 (Advanced): Interactive Knapsack with Conditional Constraints
-- Reads item data from CSV
-- Takes user input for capacity, item limits, and logical (mutual/dependent) pairs
-- Validates inputs and adds only valid constraints
+Day 3 (Final Polished): Interactive Knapsack with Logical and Target Constraints
+Simplified for clean user experience — penalty handled internally, not displayed.
 """
 
 import pandas as pd
@@ -43,7 +41,7 @@ def solve_knapsack(csv_path="data/knapsack_items.csv", capacity=None, output_pat
         except ValueError:
             print("⚠️ Invalid input. Ignoring item limit constraint.\n")
 
-    # --- Step 4: Ask for mutually exclusive pairs ---
+    # --- Step 4: Mutually exclusive pairs ---
     exclusive_pairs = []
     while True:
         add_pair = input("Do you want to add mutually exclusive items? (yes/no): ").strip().lower()
@@ -62,7 +60,7 @@ def solve_knapsack(csv_path="data/knapsack_items.csv", capacity=None, output_pat
 
     print()
 
-    # --- Step 5: Ask for dependent (must-go-together) pairs ---
+    # --- Step 5: Dependent pairs ---
     dependent_pairs = []
     while True:
         add_pair = input("Do you want to add dependent item pairs (must go together)? (yes/no): ").strip().lower()
@@ -86,7 +84,7 @@ def solve_knapsack(csv_path="data/knapsack_items.csv", capacity=None, output_pat
     model.Items = Set(initialize=items)
     model.x = Var(model.Items, within=Binary)
 
-    # Objective
+    # Base objective
     model.value = Objective(expr=sum(values[i] * model.x[i] for i in model.Items), sense=maximize)
 
     # Weight constraint
@@ -104,20 +102,44 @@ def solve_knapsack(csv_path="data/knapsack_items.csv", capacity=None, output_pat
     for k, (i, j) in enumerate(dependent_pairs):
         setattr(model, f"dependent_{k}", Constraint(expr=model.x[i] - model.x[j] == 0))
 
-    # --- Step 7: Solve ---
+    # --- Step 7: Target minimum value (soft constraint, internal penalty) ---
+    apply_target = input("Do you want to set a target minimum total value? (yes/no): ").strip().lower()
+    if apply_target == "yes":
+        try:
+            target_value = float(input("Enter target minimum total value: "))
+            penalty = 1000  # internal high penalty
+
+            model.slack = Var(within=NonNegativeReals)
+            model.target_constraint = Constraint(
+                expr=sum(values[i] * model.x[i] for i in model.Items) + model.slack >= target_value
+            )
+
+            model.value.set_value(
+                expr=sum(values[i] * model.x[i] for i in model.Items) - penalty * model.slack
+            )
+
+            print(f"🎯 Target minimum total value set: {target_value}\n")
+
+        except ValueError:
+            print("⚠️ Invalid target input. Skipping target constraint.\n")
+
+    # --- Step 8: Solve ---
     solver = SolverFactory("glpk")
     solver.solve(model, tee=False)
 
-    # --- Step 8: Results ---
+    # --- Step 9: Collect results ---
     df["selected"] = [int(model.x[i]()) for i in items]
     total_value = sum(df["value"] * df["selected"])
+    slack_value = model.slack.value if hasattr(model, "slack") else 0
 
     df.to_csv(output_path, index=False)
-    print(f"✅ Optimal total value: {total_value}")
+    print(f"✅ Optimal total value achieved: {total_value:.2f}")
+    if slack_value > 0:
+        print(f"⚠️ Target missed by {slack_value:.2f} units due to constraints.")
     print("📦 Selected items:")
     print(df[df["selected"] == 1])
 
-    # --- Step 9: Show summary of constraints applied ---
+    # --- Step 10: Summary ---
     print("\n🧠 Constraint Summary:")
     print(f"Capacity: {capacity}")
     if item_limit:
@@ -126,8 +148,12 @@ def solve_knapsack(csv_path="data/knapsack_items.csv", capacity=None, output_pat
         print(f"Mutually exclusive pairs: {exclusive_pairs}")
     if dependent_pairs:
         print(f"Dependent pairs: {dependent_pairs}")
+    if apply_target == "yes":
+        print(f"Target value: {target_value}")
 
 if __name__ == "__main__":
     solve_knapsack()
+
+
 
 
