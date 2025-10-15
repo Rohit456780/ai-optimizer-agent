@@ -27,4 +27,6 @@ Develop heuristic and metaheuristic solvers (Genetic, Tabu, etc.).
 - Tested environment setup in VS Code
 - Ready to move to Day 3: dynamic model building from CSV inputgit add README.md
 
+🧩 Day 3 — Data-Driven Knapsack Model
 
+In Day 3, the knapsack model was upgraded to be fully data-driven and interactive. The script now reads input data from a CSV file, allows dynamic capacity (from user or file), and supports optional constraints such as item count limits, mutually exclusive pairs, and dependent pairs. All inputs are validated before being added as constraints, and the final solution (selected items and total value) is saved to a results file. This makes the model flexible, explainable, and closer to how an AI optimization agent would interpret user-defined problem logic.
