@@ -1,6 +1,11 @@
-﻿item,value,weight
-A,60,10
-B,100,20
-C,120,30
-D,80,24
-E,50,15
+﻿item,value,weight,cost,category,dependent,exclusive
+CAPACITY,,50,,,,
+TARGET,,,200,,,
+BUDGET,,,80,,,
+CATEGORY_LIMIT,,,,A:1-2;B:0-2;C:0-1,,
+A,60,10,15,A,,
+B,100,20,25,A,,
+C,120,30,35,B,,
+D,80,24,30,B,,
+E,50,15,10,C,,
+F,70,20,25,C,,
