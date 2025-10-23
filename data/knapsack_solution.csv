@@ -1,7 +1,7 @@
-item,value,weight,cost,category,dependent,exclusive,selected
-A,60.0,10.0,15.0,A,,,1
-B,100.0,20.0,25.0,A,,,1
-C,120.0,30.0,35.0,B,,,0
-D,80.0,24.0,30.0,B,,,0
-E,50.0,15.0,10.0,C,,,0
-F,70.0,20.0,25.0,C,,,1
+item,value,weight,cost,category,dependent,exclusive,mandatory,selected
+A,60.0,10.0,15.0,A,,,0.0,1
+B,100.0,20.0,25.0,A,,,1.0,1
+C,120.0,30.0,35.0,B,,,0.0,0
+D,80.0,24.0,30.0,B,,,0.0,0
+E,50.0,15.0,10.0,C,,,0.0,0
+F,70.0,20.0,25.0,C,,,0.0,1

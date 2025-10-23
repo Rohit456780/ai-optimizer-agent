@@ -1,4 +1,4 @@
-"""
+""""
 Day 4 (Final) — Multi-Dimensional, Data-Driven Knapsack Optimizer
 Includes: capacity, budget, category limits, group-based dependency/exclusivity,
 and a soft target minimum value (internal slack + penalty).
@@ -85,7 +85,8 @@ def solve_knapsack(csv_path="data/knapsack_items.csv", output_path="data/knapsac
             budget = float(budget_input)
             print(f"💰 Budget set to {budget}")
 
-        use_target = False
+    # Initialize target variables
+    use_target = False
     target_value = None
     internal_penalty = 1000.0  # constant penalty factor
 
@@ -93,12 +94,15 @@ def solve_knapsack(csv_path="data/knapsack_items.csv", output_path="data/knapsac
     if "TARGET" in df["item"].values:
         target_row = df[df["item"] == "TARGET"].iloc[0]
         try:
-            # Try reading from category column
-            target_value = float(target_row["cost"])
+            # Try reading from category column (or 'cost' depending on your CSV convention)
+            # here we try 'category' first, then 'cost', then 'value' as fallbacks
+            raw = target_row.get("cost", "")
+            target_value = float(raw)
             use_target = True
             print(f"🎯 Target minimum total value read from CSV: {target_value}")
-        except ValueError:
+        except Exception:
             print("⚠️ Target row found but invalid format — skipping target constraint.")
+            use_target = False
         df = df[df["item"] != "TARGET"]
     else:
         apply_target = input("Do you want to set a target minimum total value? (press Enter to skip): ").strip().lower()
@@ -183,11 +187,13 @@ def solve_knapsack(csv_path="data/knapsack_items.csv", output_path="data/knapsac
 
     print(f"\n✅ Found {len(dependent_groups)} dependency groups and {len(exclusive_groups)} exclusivity groups.\n")
 
-    # ------------------- Ask for target minimum value? -------------------
-    # ------------------- Read target minimum value -------------------
-
-
-
+    # ------------------- Read mandatory flags (new feature) -------------------
+    # If 'mandatory' column present, read it; otherwise assume all optional
+    if "mandatory" in df.columns:
+        # fillna with 0 and convert to int
+        mandatory_map = dict(zip(df["item"], df["mandatory"].fillna(0).astype(int)))
+    else:
+        mandatory_map = {i: 0 for i in items}
 
     # ------------------- Build model -------------------
     model = ConcreteModel()
@@ -203,7 +209,12 @@ def solve_knapsack(csv_path="data/knapsack_items.csv", output_path="data/knapsac
     if budget is not None:
         model.budget_constraint = Constraint(expr=sum(costs[i] * model.x[i] for i in model.Items) <= budget)
     for cat, (minv, maxv) in category_limits.items():
-        cat_items = [i for i in items if df.loc[df["item"] == i, "category"].values[0] == cat]
+        # safer category lookup
+        cat_items = []
+        for i in items:
+            cat_val = df.loc[df["item"] == i, "category"]
+            if not cat_val.empty and str(cat_val.values[0]) == str(cat):
+                cat_items.append(i)
         if cat_items:
             setattr(model, f"cat_min_{cat}", Constraint(expr=sum(model.x[i] for i in cat_items) >= minv))
             setattr(model, f"cat_max_{cat}", Constraint(expr=sum(model.x[i] for i in cat_items) <= maxv))
@@ -215,6 +226,13 @@ def solve_knapsack(csv_path="data/knapsack_items.csv", output_path="data/knapsac
             setattr(model, f"dep_{g_id}_{other}", Constraint(expr=model.x[first] - model.x[other] == 0))
     for g_id, group in enumerate(exclusive_groups):
         setattr(model, f"exc_{g_id}", Constraint(expr=sum(model.x[i] for i in group) <= 1))
+
+    # ------------------- Mandatory item constraints (NEW) -------------------
+    model.mandatory_constraints = ConstraintList()
+    for i in items:
+        if mandatory_map.get(i, 0) == 1:
+            model.mandatory_constraints.add(model.x[i] == 1)
+            print(f"📌 Enforcing mandatory inclusion: {i}")
 
     # Soft target: add slack and incorporate into objective if requested
     if use_target:
@@ -240,10 +258,34 @@ def solve_knapsack(csv_path="data/knapsack_items.csv", output_path="data/knapsac
     elif termination in (TerminationCondition.infeasible, TerminationCondition.unbounded):
         print("❌ Model is infeasible or unbounded. No valid solution found.\n")
         print("🧠 Try adjusting capacity, budget, or category constraints.")
+
+        # ---- Custom Infeasibility Diagnosis for Mandatory Items ----
+        forced_items = [i for i, v in mandatory_map.items() if v == 1]
+        if forced_items:
+            print(f"\n🚨 Mandatory items specified: {forced_items}")
+
+            # Check if mandatory items themselves exceed capacity/budget
+            total_mand_weight = sum(weights[i] for i in forced_items if i in weights)
+            total_mand_cost = sum(costs[i] for i in forced_items if i in costs)
+
+            if capacity is not None and total_mand_weight > capacity:
+                print(f"⚠️ Mandatory items total weight ({total_mand_weight}) exceeds capacity ({capacity}).")
+
+            if budget is not None and total_mand_cost > budget:
+                print(f"⚠️ Mandatory items total cost ({total_mand_cost}) exceeds budget ({budget}).")
+
+            # Check for exclusivity violations
+            for g in exclusive_groups:
+                overlap = [i for i in g if i in forced_items]
+                if len(overlap) > 1:
+                    print(f"⚠️ Mandatory items {overlap} belong to an exclusive group {g} (cannot coexist).")
+
+        print("\n💡 Tip: Remove or relax mandatory items, or adjust constraints to regain feasibility.\n")
         return
     else:
         print("⚠️ Solver ended with unknown status. Please check configuration.")
         return
+
 
     # ------------------- Extract solution -------------------
     df["selected"] = [int(model.x[i]()) for i in items]
@@ -282,5 +324,3 @@ def solve_knapsack(csv_path="data/knapsack_items.csv", output_path="data/knapsac
 # --------------------------------------------------------------------
 if __name__ == "__main__":
     solve_knapsack()
-
-
