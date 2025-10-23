@@ -1,0 +1,70 @@
+{
+  "model_type": "knapsack",
+  "parameters": {
+    "capacity": 50,
+    "budget": 80,
+    "target": 200
+  },
+  "category_limits": {
+    "A": [1, 2],
+    "B": [0, 2],
+    "C": [0, 1]
+  },
+  "mandatory_items": ["B"],
+  "items": [
+    {
+      "name": "A",
+      "value": 60,
+      "weight": 10,
+      "cost": 15,
+      "category": "A",
+      "dependent": [],
+      "exclusive": []
+    },
+    {
+      "name": "B",
+      "value": 100,
+      "weight": 20,
+      "cost": 25,
+      "category": "A",
+      "dependent": [],
+      "exclusive": []
+    },
+    {
+      "name": "C",
+      "value": 120,
+      "weight": 30,
+      "cost": 35,
+      "category": "B",
+      "dependent": [],
+      "exclusive": []
+    },
+    {
+      "name": "D",
+      "value": 80,
+      "weight": 24,
+      "cost": 30,
+      "category": "B",
+      "dependent": [],
+      "exclusive": []
+    },
+    {
+      "name": "E",
+      "value": 50,
+      "weight": 15,
+      "cost": 10,
+      "category": "C",
+      "dependent": [],
+      "exclusive": []
+    },
+    {
+      "name": "F",
+      "value": 70,
+      "weight": 20,
+      "cost": 25,
+      "category": "C",
+      "dependent": [],
+      "exclusive": []
+    }
+  ]
+}
