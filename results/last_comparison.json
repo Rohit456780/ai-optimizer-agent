@@ -1,0 +1,20 @@
+{
+    "exact_value": 290,
+    "heuristic_value": 280,
+    "value_gap_percent": 3.45,
+    "exact_items": [
+        "A",
+        "B",
+        "D",
+        "E"
+    ],
+    "heuristic_items": [
+        "A",
+        "B",
+        "C"
+    ],
+    "exact_weight": 69,
+    "heuristic_weight": 60,
+    "exact_cost": 80,
+    "heuristic_cost": 75
+}

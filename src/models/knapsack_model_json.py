@@ -1,148 +1,116 @@
 from pyomo.environ import *
 from pyomo.opt import TerminationCondition
-from heuristics.greedy_knapsack import greedy_knapsack  # ✅ import heuristic
+from heuristics.greedy_knapsack import greedy_knapsack
 
 def solve_knapsack_from_json(data):
-    print("\n🚀 Running Knapsack Model (JSON mode)...")
-
-    # ------------------ Config ------------------
-    mode = data.get("solve_mode", "exact")
+    mode = data.get("solve_mode", "exact").lower()
     params = data.get("parameters", {})
     capacity = params.get("capacity")
     budget = params.get("budget")
-    target_value = params.get("target")
-    penalty = 1000  # fixed penalty factor
-
-    category_limits = data.get("category_limits", {})
-    mandatory_items = data.get("mandatory_items", [])
+    target_value = params.get("target_value")
     items_data = data.get("items", [])
+    mandatory_items = data.get("mandatory_items", [])
 
-    items = [i["name"] for i in items_data]
-    values = {i["name"]: i["value"] for i in items_data}
-    weights = {i["name"]: i["weight"] for i in items_data}
-    costs = {i["name"]: i["cost"] for i in items_data}
-    categories = {i["name"]: i["category"] for i in items_data}
+    def run_exact():
+        """Run Pyomo-based exact solver"""
+        model = ConcreteModel()
+        items = [i["name"] for i in items_data]
+        model.Items = Set(initialize=items)
+        model.x = Var(model.Items, within=Binary)
+        values = {i["name"]: i["value"] for i in items_data}
+        weights = {i["name"]: i["weight"] for i in items_data}
+        costs = {i["name"]: i["cost"] for i in items_data}
 
-    dep_map = {i["name"]: i["dependent"] for i in items_data if i["dependent"]}
-    exc_map = {i["name"]: i["exclusive"] for i in items_data if i["exclusive"]}
+        model.obj = Objective(expr=sum(values[i] * model.x[i] for i in items), sense=maximize)
+        if capacity:
+            model.capacity = Constraint(expr=sum(weights[i] * model.x[i] for i in items) <= capacity)
+        if budget:
+            model.budget = Constraint(expr=sum(costs[i] * model.x[i] for i in items) <= budget)
 
-    # ------------------ Heuristic Mode ------------------
-    if mode == "heuristic":
-        print("⚡ Running Greedy Heuristic Solver (capacity-only)...")
+        # Mandatory constraints
+        for m in mandatory_items:
+            if m in items:
+                setattr(model, f"mandatory_{m}", Constraint(expr=model.x[m] == 1))
+
+        solver = SolverFactory("glpk")
+        try:
+            result = solver.solve(model, tee=False, timelimit=10)  # 10s time cap
+        except Exception as e:
+            print(f"❌ Solver error: {e}")
+            return None, "error"
+
+        termination = result.solver.termination_condition
+        if termination in (TerminationCondition.infeasible, TerminationCondition.unbounded):
+            print("❌ Exact model infeasible or unbounded.")
+            return None, "infeasible"
+        elif termination == TerminationCondition.maxTimeLimit:
+            print("⏱️ Exact solver timeout.")
+            return None, "timeout"
+
+        # Successful solve
+        selected = [i for i in items if model.x[i]() >= 0.5]
+        total_value = sum(values[i] for i in selected)
+        total_weight = sum(weights[i] for i in selected)
+        total_cost = sum(costs[i] for i in selected)
+
+        return {
+            "mode": "exact",
+            "selected": selected,
+            "value": total_value,
+            "weight": total_weight,
+            "cost": total_cost,
+            "info": {"mandatory_dropped": False}
+        }, "success"
+
+    def run_heuristic():
+        """Run the greedy heuristic solver"""
+        print("⚡ Running Self-Repairing Greedy Heuristic Solver...")
         if not capacity:
             print("⚠️ Capacity required for heuristic solver. Skipping.")
-            return None
-        selected, total_value, total_weight = greedy_knapsack(items_data, capacity)
-        return {
+            return None, "error"
+
+        selected, total_value, total_weight, total_cost, info = greedy_knapsack(
+            items_data, capacity, budget, mandatory_items
+        )
+
+        result = {
             "mode": "heuristic",
             "selected": selected,
             "value": total_value,
             "weight": total_weight,
-            "cost": sum([i["cost"] for i in items_data if i["name"] in selected])
+            "cost": total_cost,
+            "info": info,
         }
 
-    # ------------------ Exact Mode (Pyomo) ------------------
-    model = ConcreteModel()
-    model.Items = Set(initialize=items)
-    model.x = Var(model.Items, within=Binary)
+        if info.get("mandatory_dropped"):
+            print("\n⚠️ Mandatory adjustments applied in heuristic solution.")
+        return result, "success"
 
-    # Objective (max value, optional target slack)
-    if target_value:
-        model.slack = Var(within=NonNegativeReals)
-        model.obj = Objective(
-            expr=sum(values[i]*model.x[i] for i in model.Items) - penalty*model.slack,
-            sense=maximize
-        )
-        model.target_constraint = Constraint(
-            expr=sum(values[i]*model.x[i] for i in model.Items) + model.slack >= target_value
-        )
+    # --------------------- Mode Handling ---------------------
+    print(f"\n🧩 Solve Mode: {mode.upper()}")
+
+    if mode == "exact":
+        result, status = run_exact()
+        return result
+
+    elif mode == "heuristic":
+        result, status = run_heuristic()
+        return result
+
+    elif mode == "auto":
+        print("🤖 Auto Mode: Trying exact solver first...")
+        result, status = run_exact()
+        if status != "success":
+            print("🔁 Switching to heuristic fallback...")
+            result, _ = run_heuristic()
+            if result:
+                result["mode"] = "auto (heuristic fallback)"
+        else:
+            print("✅ Exact solver succeeded in auto mode.")
+            result["mode"] = "auto (exact)"
+        return result
+
     else:
-        model.obj = Objective(expr=sum(values[i]*model.x[i] for i in model.Items), sense=maximize)
-
-    # Constraints: capacity, budget, category limits
-    if capacity:
-        model.capacity_constraint = Constraint(expr=sum(weights[i]*model.x[i] for i in model.Items) <= capacity)
-    if budget:
-        model.budget_constraint = Constraint(expr=sum(costs[i]*model.x[i] for i in model.Items) <= budget)
-
-    model.category_constraints = ConstraintList()
-    for cat, (minv, maxv) in category_limits.items():
-        cat_items = [i for i in items if categories[i] == cat]
-        if cat_items:
-            model.category_constraints.add(sum(model.x[i] for i in cat_items) >= minv)
-            model.category_constraints.add(sum(model.x[i] for i in cat_items) <= maxv)
-
-    # Dependencies
-    model.dependency_constraints = ConstraintList()
-    for i, deps in dep_map.items():
-        for d in deps:
-            if d in items:
-                model.dependency_constraints.add(model.x[i] <= model.x[d])
-
-    # Exclusivity
-    model.exclusivity_constraints = ConstraintList()
-    for i, excs in exc_map.items():
-        for e in excs:
-            if e in items and i < e:
-                model.exclusivity_constraints.add(model.x[i] + model.x[e] <= 1)
-
-    # Mandatory
-    model.mandatory_constraints = ConstraintList()
-    for m in mandatory_items:
-        if m in items:
-            model.mandatory_constraints.add(model.x[m] == 1)
-            print(f"📌 Mandatory item enforced: {m}")
-        else:
-            print(f"⚠️ Warning: mandatory item '{m}' not found in list (ignored).")
-
-    # ------------------ Solve ------------------
-    solver = SolverFactory("glpk")
-    result = solver.solve(model, tee=False)
-
-    status = result.solver.status
-    termination = result.solver.termination_condition
-    print(f"\n📊 Solver status: {status}, Termination: {termination}")
-
-    # Fallback logic if infeasible
-    if termination == TerminationCondition.infeasible:
-        print("❌ Exact model infeasible — switching to heuristic fallback...")
-        if capacity:
-            selected, total_value, total_weight = greedy_knapsack(items_data, capacity)
-            return {
-                "mode": "fallback_heuristic",
-                "selected": selected,
-                "value": total_value,
-                "weight": total_weight,
-                "cost": sum([i["cost"] for i in items_data if i["name"] in selected])
-            }
-        else:
-            print("⚠️ Cannot fallback: capacity not defined.")
-            return None
-
-    # ------------------ Extract solution ------------------
-    selected = [i for i in items if model.x[i]() >= 0.5]
-    total_value = sum(values[i] for i in selected)
-    total_weight = sum(weights[i] for i in selected)
-    total_cost = sum(costs[i] for i in selected)
-
-    print("\n✅ Optimal solution found:")
-    print(f"Selected items: {selected}")
-    print(f"Total Value: {total_value}")
-    print(f"Total Weight: {total_weight}")
-    print(f"Total Cost: {total_cost}")
-
-    if target_value:
-        achieved = sum(values[i]*model.x[i]() for i in items)
-        diff = max(0, target_value - achieved)
-        if diff > 0:
-            print(f"⚠️ Target missed by {diff}")
-        else:
-            print("🎯 Target achieved or exceeded!")
-
-    return {
-        "mode": "exact",
-        "selected": selected,
-        "value": total_value,
-        "weight": total_weight,
-        "cost": total_cost
-    }
+        print(f"⚠️ Unknown solve_mode '{mode}'. Defaulting to exact solver.")
+        result, _ = run_exact()
+        return result

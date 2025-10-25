@@ -1,0 +1,2 @@
+{"mode": "compare", "exact_value": 290, "heuristic_value": 280, "gap_percent": 3.45, "status": "SUCCESS", "timestamp": "2025-10-25 23:15:18"}
+{"mode": "auto (heuristic fallback)", "value": 100, "weight": 20, "cost": 25, "runtime": 0.0, "status": "SUCCESS", "timestamp": "2025-10-25 23:19:24"}

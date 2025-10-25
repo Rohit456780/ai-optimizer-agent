@@ -1,8 +1,9 @@
-{
+
+  {
   "model_type": "knapsack",
-  "solve_mode": "heuristic", 
+  "solve_mode": "auto",
   "parameters": {
-    "capacity": 50,
+    "capacity": 15,
     "budget": 80,
     "target": 200
   },
@@ -19,8 +20,8 @@
       "weight": 10,
       "cost": 15,
       "category": "A",
-      "dependent": [],
-      "exclusive": []
+      "dependent": ["B", "C"],
+      "exclusive": ["D"]
     },
     {
       "name": "B",
@@ -28,8 +29,8 @@
       "weight": 20,
       "cost": 25,
       "category": "A",
-      "dependent": [],
-      "exclusive": []
+      "dependent": ["A", "C"],
+      "exclusive": ["D"]
     },
     {
       "name": "C",
@@ -37,7 +38,7 @@
       "weight": 30,
       "cost": 35,
       "category": "B",
-      "dependent": [],
+      "dependent": ["A", "B"],
       "exclusive": []
     },
     {
@@ -47,7 +48,7 @@
       "cost": 30,
       "category": "B",
       "dependent": [],
-      "exclusive": []
+      "exclusive": ["A", "B"]
     },
     {
       "name": "E",
@@ -55,7 +56,7 @@
       "weight": 15,
       "cost": 10,
       "category": "C",
-      "dependent": [],
+      "dependent": ["F"],
       "exclusive": []
     },
     {
@@ -64,7 +65,7 @@
       "weight": 20,
       "cost": 25,
       "category": "C",
-      "dependent": [],
+      "dependent": ["E"],
       "exclusive": []
     }
   ]
