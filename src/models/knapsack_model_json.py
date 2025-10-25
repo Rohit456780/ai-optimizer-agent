@@ -1,14 +1,17 @@
 from pyomo.environ import *
 from pyomo.opt import TerminationCondition
+from heuristics.greedy_knapsack import greedy_knapsack  # ✅ import heuristic
 
 def solve_knapsack_from_json(data):
     print("\n🚀 Running Knapsack Model (JSON mode)...")
 
+    # ------------------ Config ------------------
+    mode = data.get("solve_mode", "exact")
     params = data.get("parameters", {})
     capacity = params.get("capacity")
     budget = params.get("budget")
     target_value = params.get("target")
-    penalty = 1000  # penalty for missing target
+    penalty = 1000  # fixed penalty factor
 
     category_limits = data.get("category_limits", {})
     mandatory_items = data.get("mandatory_items", [])
@@ -23,12 +26,27 @@ def solve_knapsack_from_json(data):
     dep_map = {i["name"]: i["dependent"] for i in items_data if i["dependent"]}
     exc_map = {i["name"]: i["exclusive"] for i in items_data if i["exclusive"]}
 
-    # ------------------ Model ------------------
+    # ------------------ Heuristic Mode ------------------
+    if mode == "heuristic":
+        print("⚡ Running Greedy Heuristic Solver (capacity-only)...")
+        if not capacity:
+            print("⚠️ Capacity required for heuristic solver. Skipping.")
+            return None
+        selected, total_value, total_weight = greedy_knapsack(items_data, capacity)
+        return {
+            "mode": "heuristic",
+            "selected": selected,
+            "value": total_value,
+            "weight": total_weight,
+            "cost": sum([i["cost"] for i in items_data if i["name"] in selected])
+        }
+
+    # ------------------ Exact Mode (Pyomo) ------------------
     model = ConcreteModel()
     model.Items = Set(initialize=items)
     model.x = Var(model.Items, within=Binary)
 
-    # ------------------ Objective ------------------
+    # Objective (max value, optional target slack)
     if target_value:
         model.slack = Var(within=NonNegativeReals)
         model.obj = Objective(
@@ -41,13 +59,12 @@ def solve_knapsack_from_json(data):
     else:
         model.obj = Objective(expr=sum(values[i]*model.x[i] for i in model.Items), sense=maximize)
 
-    # ------------------ Hard Constraints ------------------
+    # Constraints: capacity, budget, category limits
     if capacity:
         model.capacity_constraint = Constraint(expr=sum(weights[i]*model.x[i] for i in model.Items) <= capacity)
     if budget:
         model.budget_constraint = Constraint(expr=sum(costs[i]*model.x[i] for i in model.Items) <= budget)
 
-    # Category limits
     model.category_constraints = ConstraintList()
     for cat, (minv, maxv) in category_limits.items():
         cat_items = [i for i in items if categories[i] == cat]
@@ -55,28 +72,28 @@ def solve_knapsack_from_json(data):
             model.category_constraints.add(sum(model.x[i] for i in cat_items) >= minv)
             model.category_constraints.add(sum(model.x[i] for i in cat_items) <= maxv)
 
-    # Dependencies (If i → deps)
+    # Dependencies
     model.dependency_constraints = ConstraintList()
     for i, deps in dep_map.items():
         for d in deps:
             if d in items:
                 model.dependency_constraints.add(model.x[i] <= model.x[d])
 
-    # Exclusivity (If i, e in group → at most 1)
+    # Exclusivity
     model.exclusivity_constraints = ConstraintList()
     for i, excs in exc_map.items():
         for e in excs:
             if e in items and i < e:
                 model.exclusivity_constraints.add(model.x[i] + model.x[e] <= 1)
 
-    # Mandatory items
+    # Mandatory
     model.mandatory_constraints = ConstraintList()
     for m in mandatory_items:
         if m in items:
             model.mandatory_constraints.add(model.x[m] == 1)
             print(f"📌 Mandatory item enforced: {m}")
         else:
-            print(f"⚠️ Warning: mandatory item '{m}' not found in item list (ignored).")
+            print(f"⚠️ Warning: mandatory item '{m}' not found in list (ignored).")
 
     # ------------------ Solve ------------------
     solver = SolverFactory("glpk")
@@ -86,10 +103,23 @@ def solve_knapsack_from_json(data):
     termination = result.solver.termination_condition
     print(f"\n📊 Solver status: {status}, Termination: {termination}")
 
+    # Fallback logic if infeasible
     if termination == TerminationCondition.infeasible:
-        print("❌ Model infeasible.")
-        return None
+        print("❌ Exact model infeasible — switching to heuristic fallback...")
+        if capacity:
+            selected, total_value, total_weight = greedy_knapsack(items_data, capacity)
+            return {
+                "mode": "fallback_heuristic",
+                "selected": selected,
+                "value": total_value,
+                "weight": total_weight,
+                "cost": sum([i["cost"] for i in items_data if i["name"] in selected])
+            }
+        else:
+            print("⚠️ Cannot fallback: capacity not defined.")
+            return None
 
+    # ------------------ Extract solution ------------------
     selected = [i for i in items if model.x[i]() >= 0.5]
     total_value = sum(values[i] for i in selected)
     total_weight = sum(weights[i] for i in selected)
@@ -109,4 +139,10 @@ def solve_knapsack_from_json(data):
         else:
             print("🎯 Target achieved or exceeded!")
 
-    return {"selected": selected, "value": total_value, "weight": total_weight, "cost": total_cost}
+    return {
+        "mode": "exact",
+        "selected": selected,
+        "value": total_value,
+        "weight": total_weight,
+        "cost": total_cost
+    }

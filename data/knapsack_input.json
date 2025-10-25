@@ -1,5 +1,6 @@
 {
   "model_type": "knapsack",
+  "solve_mode": "heuristic", 
   "parameters": {
     "capacity": 50,
     "budget": 80,
